@@ -1,0 +1,145 @@
+# Caddyfile for Open edX Native Setup
+# Reverse proxy with automatic HTTPS
+
+{
+    email admin@example.com
+    # Automatic HTTPS with Let's Encrypt
+}
+
+# LMS (Learning Management System - learner interface)
+lms.example.com {
+    # Reverse proxy to LMS container
+    reverse_proxy lms:8000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Host {host}
+        
+        # Health check
+        health_uri /health
+        health_interval 10s
+        health_timeout 5s
+    }
+    
+    # Static files (served directly by Caddy)
+    handle /static/* {
+        root * /openedx/staticfiles
+        file_server
+    }
+    
+    # Media files (served directly by Caddy)
+    handle /media/* {
+        root * /openedx/media
+        file_server
+    }
+    
+    # Compression
+    encode gzip zstd
+    
+    # Security headers
+    header {
+        # HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Clickjacking protection
+        X-Frame-Options "SAMEORIGIN"
+        
+        # XSS protection
+        X-XSS-Protection "1; mode=block"
+        
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Remove server header
+        -Server
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/lms-access.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# CMS (Content Management System / Studio - authoring interface)
+studio.example.com {
+    # Reverse proxy to CMS container
+    reverse_proxy cms:8001 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Host {host}
+        
+        # Health check
+        health_uri /health
+        health_interval 10s
+        health_timeout 5s
+    }
+    
+    # Static files (served directly by Caddy)
+    handle /static/* {
+        root * /openedx/staticfiles
+        file_server
+    }
+    
+    # Media files (served directly by Caddy)
+    handle /media/* {
+        root * /openedx/media
+        file_server
+    }
+    
+    # Compression
+    encode gzip zstd
+    
+    # Security headers
+    header {
+        # HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Clickjacking protection
+        X-Frame-Options "SAMEORIGIN"
+        
+        # XSS protection
+        X-XSS-Protection "1; mode=block"
+        
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Remove server header
+        -Server
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/cms-access.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# Development/localhost configuration (HTTP only)
+:80 {
+    # LMS on port 80
+    handle /lms* {
+        reverse_proxy lms:8000
+    }
+    
+    # CMS on port 80
+    handle /cms* {
+        reverse_proxy cms:8001
+    }
+    
+    # Default to LMS
+    handle {
+        reverse_proxy lms:8000
+    }
+}
