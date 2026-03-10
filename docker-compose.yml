@@ -1,0 +1,213 @@
+# Wrapper pour Coolify : utilise le setup natif dans openedx-native/
+# Ce fichier permet de déployer depuis la racine du repo (Base Directory = /)
+# en pointant vers les configs dans openedx-native/
+
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.4.0
+    container_name: openedx-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./openedx-native/config/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - openedx
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mongodb:
+    image: mongo:7.0.28
+    container_name: openedx-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - openedx
+    command: mongod --replSet rs0
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.4.5
+    container_name: openedx-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - openedx
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.8.4
+    container_name: openedx-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_ENV: production
+    volumes:
+      - meilisearch_data:/meili_data
+    networks:
+      - openedx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  lms:
+    image: overhangio/openedx:21.0.1-indigo
+    container_name: openedx-lms
+    restart: unless-stopped
+    environment:
+      SERVICE_VARIANT: lms
+      DJANGO_SETTINGS_MODULE: lms.envs.production
+    volumes:
+      - ./openedx-native/config/lms:/openedx/config:ro
+      - ./openedx-native/config/lms/uwsgi.ini:/openedx/uwsgi.ini:ro
+      - openedx_media:/openedx/media
+      - openedx_data:/openedx/data
+      - openedx_static:/openedx/staticfiles
+    networks:
+      - openedx
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    command: uwsgi --ini /openedx/uwsgi.ini
+
+  cms:
+    image: overhangio/openedx:21.0.1-indigo
+    container_name: openedx-cms
+    restart: unless-stopped
+    environment:
+      SERVICE_VARIANT: cms
+      DJANGO_SETTINGS_MODULE: cms.envs.production
+    volumes:
+      - ./openedx-native/config/cms:/openedx/config:ro
+      - ./openedx-native/config/cms/uwsgi.ini:/openedx/uwsgi.ini:ro
+      - openedx_media:/openedx/media
+      - openedx_data:/openedx/data
+      - openedx_static:/openedx/staticfiles
+    networks:
+      - openedx
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    command: uwsgi --ini /openedx/uwsgi.ini
+
+  lms-worker:
+    image: overhangio/openedx:21.0.1-indigo
+    container_name: openedx-lms-worker
+    restart: unless-stopped
+    environment:
+      SERVICE_VARIANT: lms
+      DJANGO_SETTINGS_MODULE: lms.envs.production
+      C_FORCE_ROOT: "1"
+    volumes:
+      - ./openedx-native/config/lms:/openedx/config:ro
+      - openedx_media:/openedx/media
+      - openedx_data:/openedx/data
+    networks:
+      - openedx
+    depends_on:
+      - lms
+      - redis
+    command: celery --app=lms.celery worker --loglevel=info --max-tasks-per-child=100
+
+  cms-worker:
+    image: overhangio/openedx:21.0.1-indigo
+    container_name: openedx-cms-worker
+    restart: unless-stopped
+    environment:
+      SERVICE_VARIANT: cms
+      DJANGO_SETTINGS_MODULE: cms.envs.production
+      C_FORCE_ROOT: "1"
+    volumes:
+      - ./openedx-native/config/cms:/openedx/config:ro
+      - openedx_media:/openedx/media
+      - openedx_data:/openedx/data
+    networks:
+      - openedx
+    depends_on:
+      - cms
+      - redis
+    command: celery --app=cms.celery worker --loglevel=info --max-tasks-per-child=100
+
+  caddy:
+    image: caddy:2.7.4
+    container_name: openedx-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./openedx-native/config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - openedx_static:/openedx/staticfiles:ro
+      - openedx_media:/openedx/media:ro
+    networks:
+      - openedx
+    depends_on:
+      - lms
+      - cms
+
+volumes:
+  mysql_data:
+    name: openedx_mysql_data
+  mongo_data:
+    name: openedx_mongo_data
+  redis_data:
+    name: openedx_redis_data
+  meilisearch_data:
+    name: openedx_meilisearch_data
+  openedx_media:
+    name: openedx_media
+  openedx_data:
+    name: openedx_data
+  openedx_static:
+    name: openedx_static
+  caddy_data:
+    name: openedx_caddy_data
+  caddy_config:
+    name: openedx_caddy_config
+
+networks:
+  openedx:
+    name: openedx
+    driver: bridge
