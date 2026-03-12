@@ -36,7 +36,6 @@ services:
       - mongo_data:/data/db
     networks:
       - openedx
-    command: mongod --replSet rs0
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -181,15 +180,12 @@ services:
     command: celery --app=cms.celery worker --loglevel=info --max-tasks-per-child=100
 
   # Caddy 2.7 - Reverse proxy with automatic HTTPS
+  # NOTE: Ports are NOT exposed here - Coolify's Traefik handles external routing
   caddy:
     image: caddy:2.7.4
     container_name: openedx-caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
     volumes:
-      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
       - openedx_static:/openedx/staticfiles:ro
@@ -199,6 +195,70 @@ services:
     depends_on:
       - lms
       - cms
+    command: sh -c 'cat > /etc/caddy/Caddyfile << "EOF"
+{
+    email admin@coolify.alonu.shop
+}
+
+lms.coolify.alonu.shop {
+    reverse_proxy lms:8000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    handle /static/* {
+        root * /openedx/staticfiles
+        file_server
+    }
+    
+    handle /media/* {
+        root * /openedx/media
+        file_server
+    }
+    
+    encode gzip zstd
+    
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+}
+
+studio.coolify.alonu.shop {
+    reverse_proxy cms:8001 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    handle /static/* {
+        root * /openedx/staticfiles
+        file_server
+    }
+    
+    handle /media/* {
+        root * /openedx/media
+        file_server
+    }
+    
+    encode gzip zstd
+    
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+}
+EOF
+caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 
 # Named volumes for data persistence
 volumes:
