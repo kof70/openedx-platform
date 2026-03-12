@@ -172,16 +172,26 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - LMS_HOST=lms.coolify.alonu.shop
-      - CMS_HOST=studio.coolify.alonu.shop
     command: |
-      caddy reverse-proxy --from ${LMS_HOST:-lms.coolify.alonu.shop} --to lms:8000
+      sh -c 'cat > /etc/caddy/Caddyfile <<EOF
+      {
+        email admin@coolify.alonu.shop
+      }
+      
+      lms.coolify.alonu.shop {
+        reverse_proxy lms:8000
+        encode gzip
+      }
+      
+      studio.coolify.alonu.shop {
+        reverse_proxy cms:8001
+        encode gzip
+      }
+      EOF
+      caddy run --config /etc/caddy/Caddyfile'
     volumes:
       - caddy_data:/data
       - caddy_config:/config
-      - openedx_static:/openedx/staticfiles:ro
-      - openedx_media:/openedx/media:ro
     networks:
       - openedx
     depends_on:
