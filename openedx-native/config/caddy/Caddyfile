@@ -2,12 +2,12 @@
 # Reverse proxy with automatic HTTPS
 
 {
-    email admin@example.com
+    email admin@coolify.alonu.shop
     # Automatic HTTPS with Let's Encrypt
 }
 
 # LMS (Learning Management System - learner interface)
-lms.example.com {
+lms.coolify.alonu.shop {
     # Reverse proxy to LMS container
     reverse_proxy lms:8000 {
         header_up X-Forwarded-Proto {scheme}
@@ -67,7 +67,7 @@ lms.example.com {
 }
 
 # CMS (Content Management System / Studio - authoring interface)
-studio.example.com {
+studio.coolify.alonu.shop {
     # Reverse proxy to CMS container
     reverse_proxy cms:8001 {
         header_up X-Forwarded-Proto {scheme}
