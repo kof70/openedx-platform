@@ -86,7 +86,6 @@ services:
       DJANGO_SETTINGS_MODULE: lms.envs.production
     volumes:
       - ./openedx-native/config/lms:/openedx/config:ro
-      - ./openedx-native/config/lms/uwsgi.ini:/openedx/uwsgi.ini:ro
       - openedx_media:/openedx/media
       - openedx_data:/openedx/data
       - openedx_static:/openedx/staticfiles
@@ -112,7 +111,6 @@ services:
       DJANGO_SETTINGS_MODULE: cms.envs.production
     volumes:
       - ./openedx-native/config/cms:/openedx/config:ro
-      - ./openedx-native/config/cms/uwsgi.ini:/openedx/uwsgi.ini:ro
       - openedx_media:/openedx/media
       - openedx_data:/openedx/data
       - openedx_static:/openedx/staticfiles
