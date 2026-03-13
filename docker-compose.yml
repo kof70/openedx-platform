@@ -169,9 +169,7 @@ services:
     image: caddy:2.7.4
     container_name: openedx-caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
+    # NOTE: Ports removed - Coolify's Traefik handles external routing
     command: |
       sh -c 'cat > /etc/caddy/Caddyfile <<EOF
       {
